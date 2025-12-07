@@ -12,8 +12,8 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ha-second-core
-  DOCKERFILE_PATH: ha_second_core/Dockerfile
-  BUILD_CONTEXT: ha_second_core
+  DOCKERFILE_PATH: Dockerfile
+  BUILD_CONTEXT: .
 
 jobs:
   resolve-version:
