@@ -18,6 +18,11 @@ env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   REQUESTED_PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
+  # Cross-repo version bump settings (optional)
+  REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+  TARGET_REPO: crackyn/repository
+  TARGET_BRANCH: main
+  TARGET_FILE: ha-second-core/config.yaml
 
 jobs:
   resolve-version:
@@ -176,3 +181,40 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.description=Home Assistant second core image based on ${{ steps.prep.outputs.version }}
+
+      - name: Bump version in add-on repository
+        if: ${{ env.REPO_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.resolve-version.outputs.normalized_version }}"
+          echo "Preparing to bump version to $VERSION in $TARGET_REPO/$TARGET_FILE"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          echo "Cloning target repo..."
+          rm -rf target-repo
+          git clone --depth 1 --branch "$TARGET_BRANCH" "https://x-access-token:${REPO_TOKEN}@github.com/${TARGET_REPO}.git" target-repo
+
+          FILE_PATH="target-repo/${TARGET_FILE}"
+          if [[ ! -f "$FILE_PATH" ]]; then
+            echo "Target file not found: $FILE_PATH" >&2
+            exit 1
+          fi
+
+          echo "Updating version in $FILE_PATH"
+          sed -i -E "s/^(version:\s*)\"?[0-9]+(\.[0-9]+)*\"?/\1\"${VERSION}\"/" "$FILE_PATH"
+
+          pushd target-repo >/dev/null
+          if git diff --quiet --exit-code -- "$TARGET_FILE"; then
+            echo "No changes to commit (version already $VERSION)."
+            popd >/dev/null
+            exit 0
+          fi
+
+          git add "$TARGET_FILE"
+          git commit -m "chore(addon): bump ha-second-core to ${VERSION}"
+          git push origin "$TARGET_BRANCH"
+          popd >/dev/null
+
+          echo "Version bumped successfully."
