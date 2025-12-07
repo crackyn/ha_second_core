@@ -17,6 +17,7 @@ env:
   DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ha-second-core
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  REQUESTED_PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
 
 jobs:
   resolve-version:
@@ -117,12 +118,57 @@ jobs:
           # Pass the original tag to HA_TAG to allow 'v' or 'release-' forms if needed
           echo "build_args=HA_TAG=${RAW_VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Detect supported platforms from base image
+        id: plats
+        shell: bash
+        run: |
+          RAW_VERSION="${{ needs.resolve-version.outputs.ha_version }}"
+          BASE_IMAGE="ghcr.io/home-assistant/home-assistant:${RAW_VERSION}"
+          echo "Inspecting base image: $BASE_IMAGE"
+          # Extract supported platforms using buildx imagetools with templating
+          PLATFORMS=$(docker buildx imagetools inspect "$BASE_IMAGE" \
+            --format '{{ range .Manifest.Manifests }}{{ if .Platform }}{{ printf "%s/%s" .Platform.OS .Platform.Architecture }}{{ if .Platform.Variant }}{{ printf "/%s" .Platform.Variant }}{{ end }}{{ printf "\n" }}{{ end }}{{ end }}' | sort -u)
+          if [[ -z "$PLATFORMS" ]]; then
+            echo "Failed to fetch platforms for $BASE_IMAGE" >&2
+            exit 1
+          fi
+          # Normalize common variants
+          NORMALIZED=""
+          while IFS= read -r p; do
+            case "$p" in
+              linux/arm64*) p="linux/arm64" ;;
+              linux/arm/v7*) p="linux/arm/v7" ;;
+              linux/amd64*) p="linux/amd64" ;;
+            esac
+            NORMALIZED+="$p\n"
+          done <<< "$PLATFORMS"
+          NORMALIZED=$(echo -e "$NORMALIZED" | sort -u)
+
+          echo "Supported by base:"; echo "$NORMALIZED"
+
+          # Intersect with requested list
+          IFS=',' read -ra REQ <<< "$REQUESTED_PLATFORMS"
+          RES=()
+          for r in "${REQ[@]}"; do
+            r=$(echo "$r" | xargs)
+            if echo "$NORMALIZED" | grep -qx "$r"; then
+              RES+=("$r")
+            fi
+          done
+          if [[ ${#RES[@]} -eq 0 ]]; then
+            echo "No requested platforms are supported by $BASE_IMAGE" >&2
+            exit 1
+          fi
+          JOINED=$(IFS=, ; echo "${RES[*]}")
+          echo "platforms=$JOINED" >> $GITHUB_OUTPUT
+          echo "Will build for: $JOINED"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: ${{ env.BUILD_CONTEXT }}
           file: ${{ env.DOCKERFILE_PATH }}
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: ${{ steps.plats.outputs.platforms }}
           push: true
           build-args: |
             ${{ steps.prep.outputs.build_args }}
