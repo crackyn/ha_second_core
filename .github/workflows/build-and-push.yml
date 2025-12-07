@@ -11,10 +11,10 @@ on:
     - cron: "0 */6 * * *" # Check every 6 hours
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hs_second_core
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ha-second-core
   DOCKERFILE_PATH: Dockerfile
   BUILD_CONTEXT: .
-  DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/hs_second_core
+  DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ha_second_core
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   REQUESTED_PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
@@ -22,7 +22,7 @@ env:
   REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
   TARGET_REPO: crackyn/repository
   TARGET_BRANCH: main
-  TARGET_FILE: hs-second-core/config.yaml
+  TARGET_FILE: ha-second-core/config.yaml
 
 jobs:
   resolve-version:
@@ -215,8 +215,15 @@ jobs:
 
           FILE_PATH="target-repo/${TARGET_FILE}"
           if [[ ! -f "$FILE_PATH" ]]; then
-            echo "Target file not found: $FILE_PATH" >&2
-            exit 1
+            # Fallback to legacy path
+            LEGACY_FILE="target-repo/ha-second-core/config.yaml"
+            if [[ -f "$LEGACY_FILE" ]]; then
+              echo "Primary file not found; using legacy path: $LEGACY_FILE"
+              FILE_PATH="$LEGACY_FILE"
+            else
+              echo "Target file not found in either path: $FILE_PATH or $LEGACY_FILE" >&2
+              exit 1
+            fi
           fi
 
           echo "Updating version in $FILE_PATH"
@@ -230,7 +237,7 @@ jobs:
           fi
 
           git add "$TARGET_FILE"
-          git commit -m "chore(addon): bump ha-second-core to ${VERSION}"
+          git commit -m "chore(addon): bump second core to ${VERSION}"
           git push origin "$TARGET_BRANCH"
           popd >/dev/null
 
