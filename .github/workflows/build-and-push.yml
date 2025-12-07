@@ -11,10 +11,10 @@ on:
     - cron: "0 */6 * * *" # Check every 6 hours
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ha-second-core
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hs_second_core
   DOCKERFILE_PATH: Dockerfile
   BUILD_CONTEXT: .
-  DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ha-second-core
+  DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/hs_second_core
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   REQUESTED_PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
@@ -22,7 +22,7 @@ env:
   REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
   TARGET_REPO: crackyn/repository
   TARGET_BRANCH: main
-  TARGET_FILE: ha-second-core/config.yaml
+  TARGET_FILE: hs-second-core/config.yaml
 
 jobs:
   resolve-version:
@@ -118,6 +118,23 @@ jobs:
           if [[ -n "$DOCKERHUB_USERNAME" && -n "$DOCKERHUB_IMAGE" ]]; then
             TAGS+=" ,${DOCKERHUB_IMAGE}:${VERSION},${DOCKERHUB_IMAGE}:latest,${DOCKERHUB_IMAGE}:stable"
           fi
+          # Add GHCR arch-suffixed repo tags for Home Assistant Supervisor
+          # e.g., ghcr.io/owner/name/aarch64:VERSION
+          SUP_PLATFORMS="${{ steps.plats.outputs.platforms }}"
+          IFS=',' read -ra PLATS <<< "$SUP_PLATFORMS"
+          for p in "${PLATS[@]}"; do
+            case "$p" in
+              linux/amd64) ARCH_TAG="amd64" ;;
+              linux/arm64) ARCH_TAG="aarch64" ;;
+              linux/arm/v7) ARCH_TAG="armv7" ;;
+              *) ARCH_TAG="" ;;
+            esac
+            if [[ -n "$ARCH_TAG" ]]; then
+              TAGS+=" ,${IMAGE_NAME}/${ARCH_TAG}:${VERSION}"
+              TAGS+=" ,${IMAGE_NAME}/${ARCH_TAG}:latest"
+              TAGS+=" ,${IMAGE_NAME}/${ARCH_TAG}:stable"
+            fi
+          done
           TAGS=$(echo "$TAGS" | tr -d ' ')
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
           # Pass the original tag to HA_TAG to allow 'v' or 'release-' forms if needed
