@@ -14,6 +14,9 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ha-second-core
   DOCKERFILE_PATH: Dockerfile
   BUILD_CONTEXT: .
+  DOCKERHUB_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ha-second-core
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
 jobs:
   resolve-version:
@@ -79,6 +82,14 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -96,8 +107,13 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          # Mirror tags: version, latest, stable
-          echo "tags=${{ env.IMAGE_NAME }}:${VERSION},${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable" >> $GITHUB_OUTPUT
+          # Mirror tags: version, latest, stable (both GHCR and Docker Hub if configured)
+          TAGS="${IMAGE_NAME}:${VERSION},${IMAGE_NAME}:latest,${IMAGE_NAME}:stable"
+          if [[ -n "$DOCKERHUB_USERNAME" && -n "$DOCKERHUB_IMAGE" ]]; then
+            TAGS+=" ,${DOCKERHUB_IMAGE}:${VERSION},${DOCKERHUB_IMAGE}:latest,${DOCKERHUB_IMAGE}:stable"
+          fi
+          TAGS=$(echo "$TAGS" | tr -d ' ')
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
           # Pass the original tag to HA_TAG to allow 'v' or 'release-' forms if needed
           echo "build_args=HA_TAG=${RAW_VERSION}" >> $GITHUB_OUTPUT
 
