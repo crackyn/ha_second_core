@@ -118,23 +118,6 @@ jobs:
           if [[ -n "$DOCKERHUB_USERNAME" && -n "$DOCKERHUB_IMAGE" ]]; then
             TAGS+=" ,${DOCKERHUB_IMAGE}:${VERSION},${DOCKERHUB_IMAGE}:latest,${DOCKERHUB_IMAGE}:stable"
           fi
-          # Add GHCR arch-suffixed repo tags for Home Assistant Supervisor
-          # e.g., ghcr.io/owner/name/aarch64:VERSION
-          SUP_PLATFORMS="${{ steps.plats.outputs.platforms }}"
-          IFS=',' read -ra PLATS <<< "$SUP_PLATFORMS"
-          for p in "${PLATS[@]}"; do
-            case "$p" in
-              linux/amd64) ARCH_TAG="amd64" ;;
-              linux/arm64) ARCH_TAG="aarch64" ;;
-              linux/arm/v7) ARCH_TAG="armv7" ;;
-              *) ARCH_TAG="" ;;
-            esac
-            if [[ -n "$ARCH_TAG" ]]; then
-              TAGS+=" ,${IMAGE_NAME}/${ARCH_TAG}:${VERSION}"
-              TAGS+=" ,${IMAGE_NAME}/${ARCH_TAG}:latest"
-              TAGS+=" ,${IMAGE_NAME}/${ARCH_TAG}:stable"
-            fi
-          done
           TAGS=$(echo "$TAGS" | tr -d ' ')
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
           # Pass the original tag to HA_TAG to allow 'v' or 'release-' forms if needed
